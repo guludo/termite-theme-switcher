@@ -1,0 +1,10 @@
+#!/bin/env bash
+
+activewindow=$(xdotool getactivewindow)
+xdotool key ctrl+shift+r
+for id in $(xdotool search --class termite); do
+    if xdotool get_desktop_for_window $id &> /dev/null; then
+        xdotool windowactivate $id key --window $id ctrl+shift+r
+    fi
+done
+xdotool windowactivate $activewindow
