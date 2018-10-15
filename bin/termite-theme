@@ -21,15 +21,39 @@ class Error(Exception):
     pass
 
 def get_themes(args, pattern=None, full_path=False):
+    tag_pattern = '*'
     if pattern is None:
         pattern = '*'
     else:
+        i = 0
+        n = len(pattern)
+        while i < n:
+            if pattern[i] == ':':
+                tag_pattern = pattern[:i]
+                pattern = pattern[i + 1:]
+                break
+            elif pattern[i] == '\\':
+                i += 1
+            i += 1
+
         pattern = '*{}*'.format(pattern)
 
-    return [
-        (path if full_path else path[len(args.themes_dir) + len(os.path.sep):])
+    themes = [
+        path[len(args.themes_dir) + len(os.path.sep):]
         for path in sorted(glob(os.path.join(args.themes_dir, pattern)))
     ]
+
+    if tag_pattern != '*':
+        tags = load_tags(args)
+        tagged = set()
+        for tag in fnmatch.filter(tags.keys(), tag_pattern):
+            tagged.update(tags[tag])
+        themes = [theme for theme in themes if theme in tagged]
+
+    if full_path:
+        themes = [os.path.join(args.themes_dir, name) for name in themes]
+
+    return themes
 
 def get_current_theme():
     try:
