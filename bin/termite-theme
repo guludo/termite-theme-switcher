@@ -139,7 +139,7 @@ sub = subparsers.add_parser('next')
 sub.add_argument('pattern',
     nargs='?',
 )
-def next_theme(args):
+def cmd_next(args):
     themes = get_themes(args, args.pattern)
     if not themes:
         return 1
@@ -155,13 +155,13 @@ def next_theme(args):
     reload_current_windows()
     print(themes[i])
     return 0
-sub.set_defaults(func=next_theme)
+sub.set_defaults(func=cmd_next)
 
 sub = subparsers.add_parser('prev')
 sub.add_argument('pattern',
     nargs='?',
 )
-def prev_theme(args):
+def cmd_prev(args):
     themes = get_themes(args, args.pattern)
     if not themes:
         return 1
@@ -177,7 +177,7 @@ def prev_theme(args):
     reload_current_windows()
     print(themes[i])
     return 0
-sub.set_defaults(func=prev_theme)
+sub.set_defaults(func=cmd_prev)
 
 sub = subparsers.add_parser('list')
 sub.add_argument('pattern',
@@ -189,13 +189,13 @@ def cmd_list(args):
 sub.set_defaults(func=cmd_list)
 
 sub = subparsers.add_parser('current')
-def current_theme_cmd(args):
+def cmd_current(args):
     current = get_current_theme()
     if current is None:
         return 1
     print(current)
     return 0
-sub.set_defaults(func=current_theme_cmd)
+sub.set_defaults(func=cmd_current)
 
 sub = subparsers.add_parser('tag')
 sub.add_argument('tags',
@@ -218,7 +218,7 @@ sub.add_argument('--list',
     nargs='?',
 )
 sub.add_argument('-v', action='store_true')
-def set_tags(args):
+def cmd_tag(args):
     changed = False
 
     if args.theme:
@@ -274,7 +274,7 @@ def set_tags(args):
             else:
                 print(tag)
 
-sub.set_defaults(func=set_tags)
+sub.set_defaults(func=cmd_tag)
 
 args = parser.parse_args()
 
