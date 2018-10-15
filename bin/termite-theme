@@ -1,7 +1,8 @@
 #!/bin/env python
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, SUPPRESS
 from glob import glob
+import fnmatch
 import json
 import os
 import os.path
@@ -14,6 +15,7 @@ DEFAULT_THEMES_DIR = os.getenv('TERMITE_THEMES', os.path.join(HOME, 'termite-the
 TERMITE_CONFIG_FILE = os.path.join(HOME, '.config', 'termite', 'config')
 DATA_DIR = os.path.join(HOME, '.termite-tools', 'theme')
 CURRENT_THEME_FILE = os.path.join(DATA_DIR, 'current')
+TAGS_FILE = os.path.join(DATA_DIR, 'tags')
 
 class Error(Exception):
     pass
@@ -89,6 +91,37 @@ def reload_current_windows():
     if os.getenv('XDG_SESSION_TYPE') == 'x11':
         subprocess.check_call('termite-reload-x-windows')
 
+def load_tags(args):
+    try:
+        with open(TAGS_FILE) as f:
+            tags = json.load(f)
+    except FileNotFoundError:
+        tags = {}
+        write_tags(tags, bkp=False)
+
+    available_themes = set(get_themes(args))
+    r = {}
+    for tag, themes in tags.items():
+        themes = set(themes) & available_themes
+        if themes:
+            r[tag] = themes
+    return r
+
+def write_tags(tags, bkp=True):
+    for tag in tags:
+        tags[tag] = list(tags[tag])
+
+    if bkp:
+        shutil.copyfile(TAGS_FILE, TAGS_FILE + '.bkp')
+
+    try:
+        with open(TAGS_FILE, 'w') as f:
+            json.dump(tags, f)
+    except:
+        if bkp:
+            shutil.copyfile(TAGS_FILE + '.bkp', TAGS_FILE)
+        raise Error('unable to save tags')
+
 parser = ArgumentParser(description='''
 Utility for easily changing termite theme.
 ''')
@@ -154,6 +187,85 @@ def current_theme_cmd(args):
     print(current)
     return 0
 sub.set_defaults(func=current_theme_cmd)
+
+sub = subparsers.add_parser('tag')
+sub.add_argument('tags',
+    default=[],
+    nargs='*',
+)
+sub.add_argument('--add',
+    default=[],
+    action='append',
+    nargs='+',
+)
+sub.add_argument('--remove',
+    default=[],
+    action='append',
+    nargs='+',
+)
+sub.add_argument('--theme', nargs=1)
+sub.add_argument('--list',
+    default=SUPPRESS,
+    nargs='?',
+)
+sub.add_argument('-v', action='store_true')
+def set_tags(args):
+    changed = False
+
+    if args.theme:
+        themes = get_themes(args, args.theme[0])
+    else:
+        current = get_current_theme()
+        themes = [current] if current is not None else []
+    themes = set(themes)
+
+    l = []
+    for m in args.add:
+        l.extend(m)
+    args.add = l
+
+    args.add = set(args.add) | set(args.tags)
+
+    tags = load_tags(args)
+
+    for tag in args.add:
+        if tag not in tags:
+            tags[tag] = set()
+        if themes - tags[tag]:
+            tags[tag].update(themes)
+            changed = True
+
+    l = []
+    for m in args.remove:
+        l.extend(m)
+    args.remove = l
+
+    if args.remove:
+        l = list(tags.keys())
+        for pattern in args.remove:
+            l = fnmatch.filter(l, pattern)
+        args.remove = set(l)
+
+    for tag in args.remove:
+        if tag not in tags:
+            continue
+        if themes & tags[tag]:
+            tags[tag].difference_update(themes)
+            if not tags[tag]:
+                del tags[tag]
+            changed = True
+
+    if changed:
+        write_tags(tags)
+
+    if hasattr(args, 'list'):
+        for tag in sorted(tags):
+            if args.v:
+                print('{}: {}'.format(tag, ' '.join(tags[tag])))
+            else:
+                print(tag)
+
+sub.set_defaults(func=set_tags)
 
 args = parser.parse_args()
 
