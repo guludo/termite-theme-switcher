@@ -179,6 +179,15 @@ def prev_theme(args):
     return 0
 sub.set_defaults(func=prev_theme)
 
+sub = subparsers.add_parser('list')
+sub.add_argument('pattern',
+    nargs='?',
+)
+def cmd_list(args):
+    for theme in get_themes(args, args.pattern):
+        print(theme)
+sub.set_defaults(func=cmd_list)
+
 sub = subparsers.add_parser('current')
 def current_theme_cmd(args):
     current = get_current_theme()
