@@ -159,6 +159,18 @@ parser.add_argument('--themes-dir',
 
 subparsers = parser.add_subparsers()
 
+sub = subparsers.add_parser('set')
+sub.add_argument('pattern')
+def cmd_set(args):
+    themes = get_themes(args, args.pattern)
+    if not themes:
+        return 1
+    set_theme(args, themes[0])
+    reload_current_windows()
+    print(themes[0])
+    return 0
+sub.set_defaults(func=cmd_set)
+
 sub = subparsers.add_parser('next')
 sub.add_argument('pattern',
     nargs='?',
