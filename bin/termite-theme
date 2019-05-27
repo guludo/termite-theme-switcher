@@ -1,6 +1,8 @@
 #!/bin/env python
 
 from argparse import ArgumentParser, SUPPRESS
+from colorsys import rgb_to_hls
+from configparser import ConfigParser
 from glob import glob
 import fnmatch
 import json
@@ -10,6 +12,9 @@ import shutil
 import subprocess
 import sys
 
+from tinycss2.color3 import parse_color
+import numpy as np
+
 HOME = os.path.expanduser('~')
 DEFAULT_THEMES_DIR = os.getenv('TERMITE_THEMES', os.path.join(HOME, 'termite-themes'))
 TERMITE_CONFIG_FILE = os.path.join(HOME, '.config', 'termite', 'config')
@@ -17,14 +22,74 @@ DATA_DIR = os.path.join(HOME, '.termite-tools', 'theme')
 CURRENT_THEME_FILE = os.path.join(DATA_DIR, 'current')
 TAGS_FILE = os.path.join(DATA_DIR, 'tags')
 
+SQUARED_COLOR_KEYS = 'foreground', 'background'
+OTHER_COLOR_KEYS = tuple(f'color{i}' for i in range(22))
+THEME_FEATURES_LEN = 6 * (len(SQUARED_COLOR_KEYS) + len(OTHER_COLOR_KEYS))
+
 class Error(Exception):
     pass
 
+
+def get_theme_features(args, name):
+    conf = ConfigParser()
+    conf.read(os.path.join(args.themes_dir, name))
+
+    vector = []
+
+    def get_color_values(s):
+        c = parse_color(s)
+        if not c and s.startswith('rgba'):
+            s = 'rgb' + s[4:]
+            c = parse_color(s)
+        if not c:
+            c = parse_color('#7f7f7f')
+        r, g, b = c.red, c.green, c.blue
+        h, l, s = rgb_to_hls(r, g, b)
+        return r, g, b, h, l, s
+
+    for name in SQUARED_COLOR_KEYS:
+        vector.extend(x**2 for x in get_color_values(conf['colors'][name]))
+
+    for name in OTHER_COLOR_KEYS:
+        vector.extend(x**.5 for x in get_color_values(conf['colors'][name]))
+
+    return np.array(vector)
+
+
+def get_similar_themes(args, themes, reverse=False):
+    m = np.array([get_theme_features(args, theme) for theme in themes])
+
+    if not len(m):
+        return []
+
+    centroid = np.average(m, axis=0)
+
+    candidates = {
+        theme: get_theme_features(args, theme) for theme in get_themes(args, '*')
+    }
+
+    distances = {k: np.linalg.norm(candidates[k] - centroid) for k in candidates}
+
+    prev = 0
+    for k in sorted(distances, key=lambda k: (distances[k], k), reverse=reverse):
+        prev = distances[k]
+
+    return sorted(distances, key=lambda k: (distances[k], k), reverse=reverse)
+
 def get_themes(args, pattern=None, full_path=False):
+    use_similarity = False
     tag_pattern = '*'
     if pattern is None:
         pattern = '*'
     else:
+        if pattern.startswith('@') or pattern.startswith('%'):
+            use_similarity = True
+            similarity_reverse = pattern.startswith('%')
+            pattern = pattern[1:]
+
+        if not pattern:
+            pattern = get_current_theme()
+
         i = 0
         n = len(pattern)
         while i < n:
@@ -49,6 +114,9 @@ def get_themes(args, pattern=None, full_path=False):
         for tag in fnmatch.filter(tags.keys(), tag_pattern):
             tagged.update(tags[tag])
         themes = [theme for theme in themes if theme in tagged]
+
+    if use_similarity:
+        themes = get_similar_themes(args, themes, similarity_reverse)
 
     if full_path:
         themes = [os.path.join(args.themes_dir, name) for name in themes]
@@ -170,6 +238,17 @@ def cmd_set(args):
     print(themes[0])
     return 0
 sub.set_defaults(func=cmd_set)
+
+sub = subparsers.add_parser('_features')
+sub.add_argument('pattern')
+def cmd__features(args):
+    themes = get_themes(args, args.pattern)
+    if not themes:
+        return 1
+    features = get_theme_features(args, themes[0])
+    print(features)
+    return 0
+sub.set_defaults(func=cmd__features)
 
 sub = subparsers.add_parser('next')
 sub.add_argument('pattern',
